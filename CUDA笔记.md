@@ -1,4 +1,4 @@
-## CUDA学习
+## CUDA学习笔记
 
 [TOC]
 
@@ -207,7 +207,9 @@
         dynamicReverse<<<1, n, 64 * sizeof(int)>>>(d_d, n);
         ```
 
-6. 矩阵乘法：
+### 二、CUDA中的矩阵乘法
+
+1. 矩阵乘法：
 
    + 一个线程负责计算C中的一个元素
 
@@ -288,7 +290,9 @@
         }
         ```
 
-7. CUDA Stream
+### 三、CUDA 的Stream和Event
+
+1. CUDA Stream
 
    + CUDA stream是GPU上task 的执行队列，所有CUDA操作（kernel，内存拷贝等）都是在stream上执行的。有点类似于CPU中的多线程，以实现数据和算法处理分离，加速计算。
 
@@ -358,4 +362,81 @@
      	cudastreamDestroy(stream[i]);
      ```
 
-     
+2. CUDA Event
+
+   + CUDA Event API：
+
+     ```c++
+     // 定义
+     cudaEvent_t event
+     // 创建
+     cudaError_t cudaEventCreate(cudaEvent_t* event);
+     // 插入流中
+     cudaError_t cudaEventRecord(cudaEvent_t event, cudaStream_t stream = 0);
+     // 销毁
+     cudaError_t cudaEventDestroy(cudaEvent_t event);
+     // 同步和查询
+     cudaError_t cudaEventSynchronize(cudaEvent_t event);
+     cudaError_t cudaEventQuery(cudaEvent_t event);
+     // 进阶同步函数
+     cudaError_t cudaStreamWaitEvent(cudaStream_t stream, cudaEvent_t event);
+     ```
+
+   + CUDA Event Demo：计时实现
+
+     ```c++
+     float time_elapsed=0;
+     // 开始和结束两个事件
+     cudaEvent_t start,stop;
+     //创建Event
+     cudaEventCreate(&start);
+     cudaEventCreate(&stop);
+     //记录当前时间
+     cudaEventRecord(start, 0);
+     // 调用核函数
+     mul<<<blocks, threads, 0, 0>>>(dev_a, NUM);
+     //记录当前时间
+     cudaEventRecord(stop, 0);
+     // waits for an event to complete.
+     cudaEventSynchronize(start);
+     cudaEventSynchronize(stop);
+     // waits foranevent to complete.Record之前的任务
+     cudaEventElapsedTime(&time_elapsed, start, stop);
+     //计算时间差
+     cudaEventDestroy(start);
+     //destory the event
+     cudaEventDestroy(stop);
+     printf（"执行时间：%f（ms）\n"，time_elapsed）；
+     ```
+
+3. CUDA 显示同步操作：
+
+   + device synchronize：影响范围最大，涉及所有的stream和cpu；
+
+     <img src="CUDA%E7%AC%94%E8%AE%B0.assets/image-20230914222822447.png" alt="image-20230914222822447" style="zoom:50%;" />
+
+   + stream synchronize： 影响单个流和CPU；
+
+     <img src="CUDA%E7%AC%94%E8%AE%B0.assets/image-20230914223557903.png" alt="image-20230914223557903" style="zoom:50%;" />
+
+   + event synchronize： 影响单个流和CPU；
+
+     <img src="CUDA%E7%AC%94%E8%AE%B0.assets/image-20230914223647666.png" alt="image-20230914223647666" style="zoom:50%;" />
+
+   + cudaStreamWaitEvent：绕过CPU进行同步，函数会指定该stream等待特定的event，该event可以关联到相同或者不同的stream；
+
+     <img src="CUDA%E7%AC%94%E8%AE%B0.assets/image-20230914223918145.png" alt="image-20230914223918145" style="zoom: 33%;" />
+
+4. NVIDIA Visual Profiler（NVVP）: GPU性能分析工具
+
+### 四、cublas Library 
+
+1. 介绍：
+   + Cublas Library 就是在NVIDIA CUDA中实现**Blas基本线性代数子程序**。它允许用户访问NVIDIA中GPU（图形处理单元）的计算资源，但不能同时对多个GPU进行自动并行访问。
+   + Cublas 实现了三类函数向量标量、向量矩阵、矩阵矩阵，并通过头文件` include "cublas_v2.h“`引用。
+   + Cublas library 同时还提供了从GPU中书写和检索数据的功能。
+2. 学习网站：https://docs.nvidia.com/cuda/cublas/index.html
+3. 数据布局：对于现有的具有最大兼容性的Fortran环境，Cublas library**使用列主序存储**和**1-based indexing（以1开始索引）**。这和我们编程习惯有很大的差异。
+
+### 五、cuDNN Library 
+
