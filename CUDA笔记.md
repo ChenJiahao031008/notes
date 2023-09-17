@@ -435,8 +435,279 @@
    + Cublas Library 就是在NVIDIA CUDA中实现**Blas基本线性代数子程序**。它允许用户访问NVIDIA中GPU（图形处理单元）的计算资源，但不能同时对多个GPU进行自动并行访问。
    + Cublas 实现了三类函数向量标量、向量矩阵、矩阵矩阵，并通过头文件` include "cublas_v2.h“`引用。
    + Cublas library 同时还提供了从GPU中书写和检索数据的功能。
-2. 学习网站：https://docs.nvidia.com/cuda/cublas/index.html
-3. 数据布局：对于现有的具有最大兼容性的Fortran环境，Cublas library**使用列主序存储**和**1-based indexing（以1开始索引）**。这和我们编程习惯有很大的差异。
+   + 学习网站：https://docs.nvidia.com/cuda/cublas/index.html
+
+2. 数据布局：对于现有的具有最大兼容性的Fortran环境，Cublas library**使用列主序存储**和**1-based indexing（以1开始索引）**。这和我们编程习惯有很大的差异。
+
+3. 基础的API
+
+   ```c++
+   /* 句柄管理函数 */
+   /// CUBLAS库上下文绑定到当前CUDA设备。要在多个设备上使用该库， 需要为每个设备创建一个CUBLAS句柄。
+   /// 会返回一个 cublasStatus_t 类型的值，用来判断句柄是否创建成功
+   cublasStatus_t cublasCreate(cublasHandle_t *handle);
+   cublasStatus_t cublasDestroy(cublasHandle_t handle); 
+   /* 流管理函数 */
+   cublasStatus_t cublasSetStream(cublasHandle_t handle, cudaStream_t streamId)
+   cublasStatus_t cublasGetStream(cublasHandle_t handle, cudaStream_t *streamId)
+   /* 适用于level1函数（标量）的接口 */
+   /// 实现功能：最大最小值获取
+   /// Incx表示输入x的存储间隔，一般来说对于行存储来说存储间隔设置为行数
+   cublasStatus_t cublasIsamax(cublasHandle_t handle, int n, const float *x, int incx, int *result) 
+   cublasStatus_t cublasIsamin(cublasHandle_t handle, int n, const float *x, int incx, int *result)
+       
+   /* 适用于level2函数（矩阵向量）的接口*/
+   /// 实现功能：y = alpha * op ( A ) * x + beta * y
+   /// 参数意义
+   /// + trans：告诉程序是否进行转置操作，如果 transa的参数是CUBLAS_OP_N 则op(A) = A ，
+   ///   如果是CUBLAS_OP_T 则op(A)=A的转置
+   /// + Lda：A的l主维度，若转置按行优先，则leading dimension为A的列数，反之则为行数
+   cublasStatus_t cublasSgemv(
+       cublasHandle_t handle, 
+       cublasOperation_t trans, 
+   	int m, int n, 
+       const float *alpha, const float *A, int lda, const float *x, int incx, const float *beta, 
+       float *y, int incy)
+       
+   /* 适用于level3函数（矩阵矩阵）的接口*/
+   /// 实现功能：C = alpha * op ( A ) * op ( B ) + beta * C
+   /// 参数意义
+   /// + alpha和beta是标量， A B C是以列优先存储的矩阵
+   /// + trans：告诉程序是否进行转置操作，如果 transa的参数是CUBLAS_OP_N 则op(A) = A ，
+   ///   如果是CUBLAS_OP_T 则op(A)=A的转置
+   /// + Lda/Ldb：A/B的主维度，若转置或者按行优先，则主维度为A/B的列数，反之则为行数
+   /// + Ldc：C的主维度，C矩阵一定按列优先，则主维度为C的行数
+   cublasStatus_t cublasSgemm(cublasHandle_t handle,
+   cublasOperation_t transa, cublasOperation_t transb, 
+       int m, int n, int k,
+       const float *alpha, const float *A, int lda, const float *B, int ldb,
+       const float *beta, float*C, int ldc)
+       
+   /// 实现功能：C[i] = alpha * op ( A[i] ) * op ( B[i] ) + beta * C[i], 即分块乘法
+   /// 参数意义
+   /// + Batchcount：批处理矩阵乘法
+   cublasStatus_t cublasSgemmBatched(cublasHandle_t handle, 
+   	cublasOperation_t transa, cublasOperation_t transb,
+   	int m, int n, int k,
+   	const float *alpha, const float* Aarray[], int lda,
+   	const float *Barray[], int ldb, const float *beta,
+   	float* Carray[], int ldc,
+   	int batchCount)
+   
+   /// 实现功能： 滑动批量处理矩阵乘法，避免了内存的重复申请
+   ///  C +i * strideC = alpha * op ( A + i * strideA ) * op ( B +i * strideB) + beta * (C +i * strideC)
+   cublasStatus_t cublasSgemmStridedBatched(cublasHandle_t handle,
+   	cublasOperation_t transa, cublasOperation_t transb,
+       int m, int n, int k,
+       const float *alpha, const float *A, int lda, long long int strideA,
+       const float *B, int ldb, long long int strideB, const float *beta,
+       float *C, int ldc, long long int strideC,
+       int batchCount)
+       
+   /// 实现功能： C = alpha * op ( A ) * op ( B ) + beta * C，不同在于能够定义输入输出类型，详见附录
+   cublasStatus_t cublasGemmEx(cublasHandle_t handle, 
+       cublasOperation_t transa, cublasOperation_t transb, 
+       int m, int n, int k, 
+       const void *alpha, const void *A, cudaDataType_t Atype, int lda, 
+       const void *B, cudaDataType_t Btype, int ldb, const void *beta, 
+       void *C, cudaDataType_t Ctype, int ldc, cudaDataType_t computeType, 
+       cublasGemmAlgo_t algo)
+   ```
+
+   + 附录：类型变换
+
+     ![image-20230917172058075](CUDA%E7%AC%94%E8%AE%B0.assets/image-20230917172058075.png)
+
+4. demo展示：矩阵乘法
+
+   不妨假设如下乘法：
+   $$
+   \begin{aligned}
+   A &= \begin{bmatrix}1 & 2 & 3 & 4\\ 5 & 6 & 7 & 8\\ 9 & 10 & 11 & 12 \end{bmatrix}\\
+   B &= \begin{bmatrix}1 & 2 \\ 3 & 4\\ 5 & 6 \\ 7 & 8 \end{bmatrix}\\
+   C &= A * B
+   \end{aligned}
+   $$
+   不使用转置操作后（`CUBLAS_OP_N`）：A的主导维度为4时，A变成了A的转置，B的主导维度为2时，B也变成了B的转置，此时该乘法变成了：
+   $$
+   C^{\top} = B^{\top}*A^{\top}
+   $$
+   **TODO：老师这块讲的烂的一批，记得回头重新自学一下**
+
+   因此核心代码如下：
+
+   ```c++
+   // cuBLAS代码
+   const float alpha = 1.0f;
+   const float beta = 0.0f;
+   // m=3, n=2, k=4 -> (3 * 4) x (4 * 2) = 3 * 2
+   int m = A.row, n = B.col, k = A.col;
+   
+   cublasHandle_t handle;
+   cublasCreate(&handle);
+   
+   cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, 
+   	n, m, k, // 先B后A，因此是2*4，4*3
+       &alpha, 
+       d_B, n,  // 先B，且此时B为原B的转置，主导维度为n
+   	d_A, k,  // 后A，且此时A为原A的转置，主导维度为k
+       &beta, 
+       d_C, n); // C为转置，此时C的主导为C的列数
+   
+   cublasDestroy(handle);
+   
+   cudaMemcpy(h_CUBLAS, d_C, mem_size_C, cudaMemcpyDeviceToHost);
+   ```
 
 ### 五、cuDNN Library 
+
+1. 介绍：
+
+   + NVIDIA cuDNN是用于深度神经网络的GPU加速库。它强调性能、易用性和低内存开销，可以集成到更高级别的机器学习框架中；
+   + 实现各种深度学习组件，并通过头文件`include "cudnn.h“`调用
+   + 学习网站： https://docs.nvidia.com/deeplearning/cudnn/
+
+2. 基础的API：
+
+   ```c++
+   /* 辅助函数 */
+   /// 创建cuDNN句柄
+   cudnnStatus_t cudnnCreate(cudnnHandle_t *handle)
+   /// 释放cuDNN句柄
+   cudnnStatus_t cudnnDestroy(cudnnHandle_t handle)
+   /// 将CUDA流设置&返回成cudnn句柄
+   cudnnStatus_t cudnnSetStream( cudnnHandle_t handle, cudaStream_t streamId)
+   cudnnStatus_t cudnnGetStream( cudnnHandle_t handle, cudaStream_t *streamId)
+   
+   /* 卷积操作 */
+   // 实现功能：y = alpha * op ( w ) * x + beta * y
+   cudnnStatus_t cudnnConvolutionForward(
+       cudnnHandle_t handle,
+       const void                         *alpha,             
+       const cudnnTensorDescriptor_t xDesc,
+       const void                         *x,
+       const cudnnFilterDescriptor_t wDesc,
+       const void                         *w,
+       const cudnnConvolutionDescriptor_t convDesc,
+       cudnnConvolutionFwdAlgo_t algo,
+       void                               *workSpace,
+       size_t workSpaceSizeInBytes,
+       const void                         *beta,
+       const cudnnTensorDescriptor_t yDesc,
+       void                               *y)
+   ```
+
+3. cuDNN 卷积Demo:
+
+   ```c++
+   
+   cudnnStatus_t status; 
+   cudnnHandle_t h_cudnn; 
+   cudnnCreate(&h_cudnn);
+   cudnnTensorDescriptor_t ts_in, ts_out;        		// 1. 定义一个张量描述符
+   status = cudnnCreateTensorDescriptor(&ts_in); 		// 2. 创建输入张量描述符
+   if(CUDNN_STATUS_SUCCESS == status){ 
+       std::cout << “创建输入张量成功!” << std::endl; 
+   }
+   
+   status = cudnnSetTensor4dDescriptor(    			// 3. 设置输入张量数据
+           ts_in,                             	 		// 张量对象
+           CUDNN_TENSOR_NHWC,                  		// 张量的数据布局
+           CUDNN_DATA_FLOAT,                   		// 张量的数据类型
+           1,                                  		// 图像数量
+           3,                                  		// 图像通道
+           1080,                               		// 图像高度
+           1920                                		// 图像宽度
+   );
+   if(CUDNN_STATUS_SUCCESS == status) 
+       std::cout << "创建输出张量成功!" << std::endl;
+       
+   cudnnCreateTensorDescriptor(&ts_out); 				// 设置输出张量描述符
+   status = cudnnSetTensor4dDescriptor(
+       ts_out, 
+       CUDNN_TENSOR_NHWC, 
+       CUDNN_DATA_FLOAT, 
+       1, 
+       3, 
+       1080, 
+   	1920
+   );
+       
+   cudnnFilterDescriptor_t kernel;
+   cudnnCreateFilterDescriptor(&kernel); 				// 创建卷积核描述符
+   status = cudnnSetFilter4dDescriptor(
+       kernel, 
+       CUDNN_DATA_FLOAT, 
+       CUDNN_TENSOR_NHWC, 
+       3,       // todo: 不明白为什么这里卷积的k要设置为3？之前不是数量设置为1吗？
+       3, 
+       3, 
+       3
+   );
+       
+   cudnnConvolutionDescriptor_t conv; 					// 创建卷积层描述符
+   status = cudnnCreateConvolutionDescriptor(&conv); 	// 设置卷积
+   status = cudnnSetConvolution2dDescriptor(
+       conv, 											// 卷积层描述
+       1, 1, 					 					   	// Zero-padding height or width
+       1, 1, 	 										// Vertical or Horizontal filter stride. 
+       1, 1,    										// Filter height or width dilation. 
+       CUDNN_CROSS_CORRELATION,	 				    // CUDNN_CONVOLUTION 或 CUDNN_CROSS_CORRELATION
+   	CUDNN_DATA_FLOAT        					    // 计算精度
+   );
+   
+   // 在cuDNN 8.0之前的版本，通过cudnnGetConvolutionForwardAlgorithm来选择的卷积的计算方法
+   cudnnConvolutionFwdAlgo_t algo;						// 设置算法
+   status = cudnnGetConvolutionForwardAlgorithm(       // 这个api在新版doc中有变化
+       h_cudnn, 										// 句柄
+       ts_in, 											// 输入张量描述符 xDesc
+       kernel, 										// 滤波器描述（核） wDesc
+       conv, 											// 卷积层描述符 ConvDesc
+       ts_out, 										// 输出张量描述符 yDesc
+   	CUDNN_CONVOLUTION_FWD_PREFER_FASTEST, 			// 偏好，默认选这个
+       0, 												// 内存限制大小（仅在部分偏好选项中生效）
+       &algo											// 输出：卷积算法
+   );
+   
+   // 获取卷积计算所需要的内存空间
+   size_t workspace_size = 0;
+   status = cudnnGetConvolutionForwardWorkspaceSize(
+       h_cudnn, 										// 句柄
+       ts_in, 											// 输入
+       kernel, 										// 核
+       conv, 											// 卷积
+       ts_out, 										// 输出
+       algo, 											// 算法
+   	&workspace_size									// 输出：获取内存空间大小
+   );
+   
+   void * workspace;
+   cudaMalloc(&workspace, workspace_size);
+   float alpha = 1.0f; 
+   float beta = -100.0f;
+   // 实现功能：y = alpha * op ( w ) * x + beta * y
+   status =  cudnnConvolutionForward(					// 卷积执行
+   	h_cudnn, 										// 句柄
+       &alpha, 										// 系数alpha
+       ts_in,											// 输入张量描述符
+   	img_gpu,                      					// 输入内存
+   	kernel, 										// 核描述符
+   	kernel_gpu,                      				// 核
+   	conv, 											// 卷积操作描述符
+       algo, 											// 算法
+       workspace,										// 工作空间
+       workspace_size, 								// 工作空间大小
+       &beta,											// 系数beta
+   	ts_out, 										// 输出描述符
+       conv_gpu 										// 输出内存
+   );
+   cudnnDestroy(h_cudnn);
+   ```
+
+   附加：
+
+   + 卷积（CUDNN_CONVOLUTION）和互相关（CUDNN_CROSS_CORRELATION）：[链接](https://zhuanlan.zhihu.com/p/33194385)；
+   + 参考api文档：[链接](https://hpc.pku.edu.cn/docs/20170830182053891231.pdf)；
+
+### 六、TensorRT
 
